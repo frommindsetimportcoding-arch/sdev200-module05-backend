@@ -3,14 +3,95 @@
 const express = require("express");
 // We have to use cors in order to host a front end and backend on the same device
 var cors = require("cors");
+const jwt = require("jwt-simple");
+const secret = "supersecret";
 // activate or tell this app variable to be an express server
 const app = express();
 const router = express.Router();
 
 const Song = require("./models/songs");
+const User = require("./models/users");
 
 app.use(cors());
 app.use(express.json());
+
+// Creating a new user
+router.post("/user", async function (req, res) {
+  if (!req.body.username || !req.body.password) {
+    res.status(400).json({ error: "Missing username or password" });
+  }
+
+  const newUser = await new User({
+    username: req.body.username,
+    password: req.body.password,
+    status: req.body.status,
+  });
+  try {
+    await newUser.save();
+    res.sendStatus(201); // created
+  } catch (err) {
+    res.status(400).send(err);
+  }
+});
+
+// Authenticate or login
+// Is a POST request - reason why is because when you login you are creating what is called a new 'session'.
+router.post("/auth", async function (req, res) {
+  if (!req.body.username || !req.body.password) {
+    res.status(400).json({ error: "Missing username or password" });
+    return;
+  }
+  // Try to find the username in the database, then see if it matches with a username and password.
+  let user = await User.findOne({ username: req.body.username });
+  // Connection or server error
+
+  if (!user) {
+    res.status(401).json({ error: "Bad username" });
+    return;
+  } else {
+    if (user.password != req.body.password) {
+      res.status(401).json({ error: "Bad Password" });
+      return;
+    }
+    // Successful login.
+    else {
+      // Create a token that is encoded with the jwt library, and send back the username... This will be important later.
+      // We also will send back as part of the token that you are currently authorized.
+      // We could do this with a boolean or a number value e.g. if auth = 0 you are not authorized, if auth = 1 you are authorized.
+
+      username2 = user.username;
+      const token = jwt.encode({ username: user.username }, secret);
+      const auth = 1;
+
+      // respond with the token.
+      res.json({
+        username2,
+        token: token,
+        auth: auth,
+      });
+    }
+  }
+});
+
+// Check status of user with a valid token, see if it matches the front end token.
+router.get("/status", async function (req, res) {
+  if (!req.headers["x-auth"]) {
+    return res.status(401).json({ error: "Missing x-auth" });
+  }
+  // if x-auth contains the token (it should)
+  const token = req.headers["x-auth"];
+  try {
+    // Not noted in video but we don't actually use the decoded variable. jwt-simple both decodes and authenticates
+    // using jwt.decode.
+    const decoded = jwt.decode(token, secret);
+
+    // send back all username and status fields to the user or front end
+    let users = await User.find({}, "username status");
+    res.json(users);
+  } catch (ex) {
+    res.status(401).json({ error: "invalid jwt" });
+  }
+});
 
 // grab all the songs in a database
 router.get("/songs", async function (req, res) {
